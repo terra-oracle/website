@@ -187,6 +187,14 @@ export const projects: ProjectLink[] = [
     categories: ['applications', 'tools']
   },
   { 
+    name: 'DarkSun',
+    url: 'https://darksun.finance',
+    description: 'Portfolio tracker that provides real-time insights',
+    indicator: 'hybrid',
+    logo: '/public/logos/tools/darksun.webp',
+    categories: ['tools']
+  },
+  { 
     name: 'Discourse',
     url: 'https://discourse.luncgoblins.com',
     description: 'Community forum',
@@ -471,14 +479,6 @@ export const projects: ProjectLink[] = [
     indicator: 'onchain',
     logo: '/public/logos/tools/luncscan.png',
     categories: ['tools']
-  },
-  { 
-    name: 'LuncToken.org',
-    url: 'https://lunctoken.org',
-    description: 'News website',
-    indicator: 'onchain',
-    logo: '/public/logos/media/lunctoken.webp',
-    categories: ['information']
   },
   { 
     name: 'Lunc.Tools',
