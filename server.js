@@ -18,6 +18,12 @@ const logger = {
 
 async function createServer() {
   const app = express();
+
+  app.get('/bubbles', (req, res) => {
+    const queryIndex = req.originalUrl.indexOf('?');
+    const query = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : '';
+    res.redirect(301, `/ecosystem${query}`);
+  });
   
   // Use compression middleware
   app.use(compression());
@@ -56,7 +62,8 @@ async function createServer() {
         maxAge: '1y',
         etag: true,
         lastModified: true,
-        fallthrough: false // Don't fall through to the next middleware
+        // Let application routes such as /docs and /ecosystem reach the SPA fallback.
+        fallthrough: true
       })
     );
     

@@ -2,24 +2,25 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   Suspense,
 } from "react";
 import { Helmet } from "react-helmet-async";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import CategoryNavigation from "./components/category-navigation";
-import CategorySection from "./components/CategorySection";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import FAQAccordion from "./components/FAQAccordion";
 import HeroSection from "./components/hero-section";
 import MetricsShowcase, { TokenMetric } from "./components/metrics-showcase";
-import ThemeToggle from "./components/ThemeToggle";
-import { projects } from "./data/projects";
-import { categories } from "./data/categories";
+import SiteHeader from "./components/site-header";
+import SiteFooter from "./components/site-footer";
+import SeoHead, { OG_IMAGE_URL, SITE_URL } from "./components/seo-head";
+import { stablecoinAssets } from "./data/stablecoins";
+import { siteLinks } from "./data/site-links";
+import { docSeoSections } from "./generated/doc-seo";
 import { useTheme } from "./contexts/ThemeContext";
-import SortControls, { SortMode } from "./components/sort-controls";
 import type { DocNavigationOptions } from "./types/doc-navigation";
+import type { DocSeoPage, DocSeoSection } from "./types/doc-seo";
 import { LAST_UPDATE } from "./generated/build-info";
+import { scheduleNonCriticalTask } from "./utils/schedule-non-critical-task";
 const ProjectMapPage = React.lazy(() => import("./components/project-map/project-map-page"));
 const DocsShell = React.lazy(() => import("./components/docs/docs-shell"));
 const NotFoundPage = React.lazy(() => import("./components/not-found/not-found-page"));
@@ -28,6 +29,7 @@ export type TokenInfo = {
   readonly price: string;
   readonly change: string;
   readonly isPositive: boolean;
+  readonly marketCap: string;
 };
 
 export type StakingInfo = {
@@ -59,21 +61,146 @@ type VyntrexPriceResponse = {
   readonly gain24h?: number;
   readonly gain7d?: number;
   readonly gain30d?: number;
+  readonly marketCap?: number;
+  readonly marketcap?: number;
+  readonly market_cap?: number;
+  readonly mcap?: number;
 };
 
-const SCROLL_OFFSET_DESKTOP = 96;
-const SCROLL_OFFSET_MOBILE = 56;
 const STAKING_APR_ENDPOINT = "https://validator.info/api/terra-classic/blockchain/apr-info";
 const VYNTREX_API_BASE = "https://api.vyntrex.io/api/v1/prices";
-const VYNTREX_API_KEY = "a7eb94aa-ff81-4a82-89e2-ca3665f70739";
+const VYNTREX_MARKET_CAP_API_BASE = "https://api.vyntrex.io/api/v1/marketcap";
+const DEFAULT_VYNTREX_API_KEY = "a7eb94aa-ff81-4a82-89e2-ca3665f70739";
+const CONFIGURED_VYNTREX_API_KEY = import.meta.env.VITE_VYNTREX_API_KEY?.trim();
+const VYNTREX_API_KEY = CONFIGURED_VYNTREX_API_KEY || DEFAULT_VYNTREX_API_KEY;
+const VYNTREX_MARKET_CAP_API_KEY = import.meta.env.VITE_VYNTREX_MARKET_CAP_API_KEY?.trim() || CONFIGURED_VYNTREX_API_KEY;
 const VYNTREX_REFERER = "https://terra-classic.io";
 
+const HOME_TITLE = "Terra Classic (LUNC) | Ecosystem, Docs & Governance";
+const HOME_DESCRIPTION = "Explore Terra Classic (LUNC): native assets, live network data, validators, governance, developer guides, wallets, DeFi projects, and documentation.";
+const ECOSYSTEM_TITLE = "Terra Classic Ecosystem Directory | LUNC Projects";
+const ECOSYSTEM_DESCRIPTION = "Browse Terra Classic ecosystem projects, wallets, validators, infrastructure, DeFi applications, bridges, and developer tools in one searchable directory.";
+const ORGANIZATION_ID = `${SITE_URL}/#organization`;
+const WEBSITE_ID = `${SITE_URL}/#website`;
+
+const organizationStructuredData = {
+  "@type": "Organization",
+  "@id": ORGANIZATION_ID,
+  name: "Terra Classic Community",
+  alternateName: ["Terra Classic", "Luna Classic"],
+  url: SITE_URL,
+  logo: {
+    "@type": "ImageObject",
+    url: `${SITE_URL}/favicon-512.png`,
+    width: 512,
+    height: 512,
+  },
+  image: OG_IMAGE_URL,
+  sameAs: [
+    siteLinks.github,
+    siteLinks.communityForum,
+    siteLinks.communityTelegram,
+  ],
+};
+
+const websiteStructuredData = {
+  "@type": "WebSite",
+  "@id": WEBSITE_ID,
+  url: SITE_URL,
+  name: "Terra Classic",
+  alternateName: "Luna Classic",
+  description: HOME_DESCRIPTION,
+  inLanguage: "en",
+  publisher: { "@id": ORGANIZATION_ID },
+};
+
+type DocSeoTarget = {
+  readonly section: DocSeoSection;
+  readonly page: DocSeoPage;
+  readonly trail: readonly DocSeoPage[];
+  readonly path: readonly string[];
+  readonly isValid: boolean;
+};
+
+const resolveDocSeoTarget = (segments: readonly string[]): DocSeoTarget => {
+  const seoSections: readonly DocSeoSection[] = docSeoSections;
+  const fallbackSection = seoSections[0];
+  const fallbackPage = fallbackSection.pages[0];
+  const [sectionSlug, ...pageSegments] = segments;
+  const matchingSection = seoSections.find((candidate) => candidate.slug === sectionSlug);
+  const section = matchingSection ?? fallbackSection;
+  let isValid = segments.length === 0 || Boolean(matchingSection);
+  let pages = section.pages;
+  const trail: DocSeoPage[] = [];
+
+  if (pageSegments.length === 0) {
+    trail.push(pages[0] ?? fallbackPage);
+  } else {
+    pageSegments.forEach((pageSlug) => {
+      const page = pages.find((candidate) => candidate.slug === pageSlug);
+      if (!page) {
+        isValid = false;
+        return;
+      }
+      trail.push(page);
+      pages = page.children ?? [];
+    });
+  }
+
+  const page = trail[trail.length - 1] ?? fallbackPage;
+  return {
+    section,
+    page,
+    trail: trail.length > 0 ? trail : [fallbackPage],
+    path: (trail.length > 0 ? trail : [fallbackPage]).map((entry) => entry.slug),
+    isValid,
+  };
+};
+
 const formatApr = (value: number): string => `${value.toFixed(2)}%`;
-const formatUsdPrice = (value: number): string =>
-  `$${value.toLocaleString("en-US", {
-    minimumFractionDigits: value >= 1 ? 2 : 5,
-    maximumFractionDigits: value >= 1 ? 4 : 6,
-  })}`;
+const formatUsdPrice = (value: number): string => {
+  const minimumFractionDigits = value >= 1 ? 2 : value >= 0.01 ? 4 : value >= 0.0001 ? 5 : 6;
+  const maximumFractionDigits = value >= 1 ? 4 : value >= 0.01 ? 6 : value >= 0.0001 ? 7 : 9;
+  return `$${value.toLocaleString("en-US", { minimumFractionDigits, maximumFractionDigits })}`;
+};
+
+const formatUsdMarketCap = (value?: number): string => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return "$-.--";
+  }
+
+  const units = [
+    { threshold: 1_000_000_000_000, suffix: "T" },
+    { threshold: 1_000_000_000, suffix: "B" },
+    { threshold: 1_000_000, suffix: "M" },
+    { threshold: 1_000, suffix: "K" },
+  ] as const;
+  const unit = units.find(({ threshold }) => value >= threshold);
+
+  if (!unit) {
+    return `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+  }
+
+  return `$${(value / unit.threshold).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}${unit.suffix}`;
+};
+
+const parseVyntrexMarketCap = (payload: unknown): number | undefined => {
+  if (typeof payload === "number" && Number.isFinite(payload)) {
+    return payload;
+  }
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+
+  const response = payload as Record<string, unknown>;
+  const candidate = [response.marketCap, response.marketcap, response.market_cap, response.mcap, response.value]
+    .find((value) => typeof value === "number" || (typeof value === "string" && value.trim().length > 0));
+  const marketCap = typeof candidate === "string" ? Number(candidate) : candidate;
+  return typeof marketCap === "number" && Number.isFinite(marketCap) ? marketCap : undefined;
+};
 
 const formatChangePercentage = (value: number): { readonly label: string; readonly isPositive: boolean } => {
   const percentage = value * 100;
@@ -101,17 +228,39 @@ const fetchVyntrexPrice = async (denom: string): Promise<VyntrexPriceResponse> =
   return (await response.json()) as VyntrexPriceResponse;
 };
 
+const fetchVyntrexMarketCap = async (denom: string): Promise<number | undefined> => {
+  if (!VYNTREX_MARKET_CAP_API_KEY) {
+    return undefined;
+  }
+
+  const response = await fetch(`${VYNTREX_MARKET_CAP_API_BASE}/${denom}`, {
+    headers: {
+      Accept: "application/json",
+      "X-Api-Key": VYNTREX_MARKET_CAP_API_KEY,
+      Referer: VYNTREX_REFERER,
+    },
+  });
+
+  if (!response.ok) {
+    return undefined;
+  }
+
+  return parseVyntrexMarketCap(await response.json());
+};
+
 const getInitialState = (): AppState => ({
   tokens: {
     LUNC: {
       price: "$-.--",
       change: "+.---%",
       isPositive: true,
+      marketCap: "$-.--",
     },
     USTC: {
       price: "$-.--",
       change: "+.---%",
       isPositive: true,
+      marketCap: "$-.--",
     },
   },
   staking: {
@@ -121,8 +270,6 @@ const getInitialState = (): AppState => ({
 });
 
 export const DEFAULT_STATE = getInitialState();
-
-type CategoryRefMap = Record<string, HTMLElement | null>;
 
 const App: React.FC<{
   readonly initialState?: Partial<AppState>;
@@ -146,15 +293,14 @@ const App: React.FC<{
   );
 
   const [appState, setAppState] = useState<AppState>(mergedInitialState);
-  const [activeCategory, setActiveCategory] = useState<string>("All");
-  const categoriesContainerRef = useRef<HTMLDivElement | null>(null);
-  const categoryRefs = useRef<CategoryRefMap>({});
+  const [stablecoinPrices, setStablecoinPrices] = useState<Record<string, TokenInfo>>({
+    LUNC: mergedInitialState.tokens.LUNC,
+    USTC: mergedInitialState.tokens.USTC,
+  });
   const location = useLocation();
   const navigate = useNavigate();
 
   const { resolvedTheme } = useTheme();
-  const [sortMode, setSortMode] = useState<SortMode>("random");
-  const [prioritizeOnchain, setPrioritizeOnchain] = useState<boolean>(false);
 
   const normalizedInitialHostname = useMemo<string>(
     () => initialHostname.toLowerCase(),
@@ -174,8 +320,6 @@ const App: React.FC<{
     }
     setHostname(window.location.hostname.toLowerCase());
   }, [normalizedInitialHostname]);
-  const [heroDetailsExpanded, setHeroDetailsExpanded] = useState<boolean>(false);
-
   useEffect(() => {
     setAppState(mergedInitialState);
   }, [mergedInitialState]);
@@ -198,10 +342,6 @@ const App: React.FC<{
       window.removeEventListener("resize", updateMobileState);
     };
   }, []);
-
-  useEffect(() => {
-    setHeroDetailsExpanded(!appState.isMobile);
-  }, [appState.isMobile]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -234,10 +374,13 @@ const App: React.FC<{
       }
     };
 
-    fetchStakingApr();
+    const cancelScheduledFetch = scheduleNonCriticalTask(() => {
+      void fetchStakingApr();
+    });
 
     return () => {
       isCancelled = true;
+      cancelScheduledFetch();
     };
   }, []);
 
@@ -257,56 +400,65 @@ const App: React.FC<{
     let intervalId: number | undefined;
 
     const fetchTokenPrices = async () => {
-      try {
-        const [luncData, ustcData] = await Promise.all([
-          fetchVyntrexPrice("uluna"),
-          fetchVyntrexPrice("uusd"),
-        ]);
+      const results = await Promise.allSettled(
+        stablecoinAssets.map(async (asset) => {
+          const data = await fetchVyntrexPrice(asset.denom);
+          const change = formatChangePercentage(data.gain24h ?? 0);
+          const marketCap = parseVyntrexMarketCap(data) ?? await fetchVyntrexMarketCap(asset.denom);
+          return [
+            asset.symbol,
+            {
+              price: formatUsdPrice(data.price ?? 0),
+              change: change.label,
+              isPositive: change.isPositive,
+              marketCap: formatUsdMarketCap(marketCap),
+            } satisfies TokenInfo,
+          ] as const;
+        })
+      );
 
-        if (isCancelled) {
-          return;
+      if (isCancelled) {
+        return;
+      }
+
+      const nextPrices = results.reduce<Record<string, TokenInfo>>((prices, result) => {
+        if (result.status === "fulfilled") {
+          const [symbol, tokenInfo] = result.value;
+          prices[symbol] = tokenInfo;
         }
+        return prices;
+      }, {});
 
-        setAppState((previous) => {
-          const luncChange = formatChangePercentage(luncData.gain24h ?? 0);
-          const ustcChange = formatChangePercentage(ustcData.gain24h ?? 0);
+      setStablecoinPrices((previous) => ({ ...previous, ...nextPrices }));
+      setAppState((previous) => ({
+        ...previous,
+        tokens: {
+          LUNC: nextPrices.LUNC ?? previous.tokens.LUNC,
+          USTC: nextPrices.USTC ?? previous.tokens.USTC,
+        },
+      }));
 
-          return {
-            ...previous,
-            tokens: {
-              LUNC: {
-                price: formatUsdPrice(luncData.price ?? 0),
-                change: luncChange.label,
-                isPositive: luncChange.isPositive,
-              },
-              USTC: {
-                price: formatUsdPrice(ustcData.price ?? 0),
-                change: ustcChange.label,
-                isPositive: ustcChange.isPositive,
-              },
-            },
-          };
-        });
-      } catch (error) {
-        console.error("Unable to load token prices", error);
+      const failedRequests = results.filter((result) => result.status === "rejected").length;
+      if (failedRequests > 0) {
+        console.warn(`Unable to refresh ${failedRequests} Terra Classic asset price(s)`);
       }
     };
 
-    fetchTokenPrices();
-    intervalId = window.setInterval(fetchTokenPrices, 30_000);
+    const cancelScheduledFetch = scheduleNonCriticalTask(() => {
+      void fetchTokenPrices();
+      intervalId = window.setInterval(() => {
+        void fetchTokenPrices();
+      }, 300_000);
+    });
 
     return () => {
       isCancelled = true;
+      cancelScheduledFetch();
       if (typeof intervalId === "number") {
         window.clearInterval(intervalId);
       }
     };
   }, []);
-
-  const totalResourceCount = useMemo<number>(
-    () => projects.length,
-    []
-  );
 
   const pathSegments = useMemo<readonly string[]>(
     () => location.pathname.split("/").filter(Boolean),
@@ -363,182 +515,200 @@ const App: React.FC<{
     [isDocsSubdomain, navigate]
   );
   
-  const visibleCategories = useMemo<(keyof typeof categories)[]>(() => {
-    if (activeCategory === "All") {
-      return Object.keys(categories);
-    }
-    return Object.keys(categories).filter((category) => category === activeCategory);
-  }, [activeCategory]);
-
   const tokenMetrics = useMemo<TokenMetric[]>(() => {
-    const { LUNC, USTC } = appState.tokens;
-    return [
-      {
-        symbol: "LUNC",
-        price: LUNC.price,
-        change: LUNC.change,
-        isPositive: LUNC.isPositive,
-      },
-      {
-        symbol: "USTC",
-        price: USTC.price,
-        change: USTC.change,
-        isPositive: USTC.isPositive,
-      },
-    ];
-  }, [appState.tokens]);
+    return stablecoinAssets.map((asset) => {
+      const fallback = asset.symbol === "LUNC"
+        ? appState.tokens.LUNC
+        : asset.symbol === "USTC"
+        ? appState.tokens.USTC
+        : { price: "$-.--", change: "+.---%", isPositive: true, marketCap: "$-.--" };
+      const metric = stablecoinPrices[asset.symbol] ?? fallback;
+      return { symbol: asset.symbol, ...metric };
+    });
+  }, [appState.tokens, stablecoinPrices]);
 
-  const heroStats = useMemo(
-    () => [
-      {
-        label: "Projects",
-        value: `${totalResourceCount}+`,
-        description:
-          "Applications, infrastructure, and tools",
-      },
-      {
-        label: "Staking APR",
-        value: appState.staking.apr,
-        description: "Source: validator.info",
-      },
-    ],
-    [appState.staking.apr, totalResourceCount]
-  );
-
-  const assignCategoryRef = useCallback(
-    (category: string, element: HTMLElement | null) => {
-      if (element) {
-        categoryRefs.current[category] = element;
-      } else {
-        delete categoryRefs.current[category];
-      }
-    },
-    []
-  );
-
-  const scrollToElement = useCallback(
-    (element: HTMLElement | null) => {
-      if (!element || typeof window === "undefined") {
-        return;
-      }
-      const offset = appState.isMobile
-        ? SCROLL_OFFSET_MOBILE
-        : SCROLL_OFFSET_DESKTOP;
-      const targetPosition = element.getBoundingClientRect().top + window.scrollY;
-      window.scrollTo({ top: targetPosition - offset, behavior: "smooth" });
-    },
-    [appState.isMobile]
-  );
-
-  const handleExploreCategories = useCallback(() => {
-    setActiveCategory("All");
-    scrollToElement(categoriesContainerRef.current);
-  }, [scrollToElement]);
-
-  const handleCategorySelect = useCallback(
-    (category: string) => {
-      setActiveCategory(category);
-      if (category === "All") {
-        scrollToElement(categoriesContainerRef.current);
-        return;
-      }
-      scrollToElement(categoryRefs.current[category] ?? null);
-    },
-    [scrollToElement]
-  );
+  const assetUsdPrices = useMemo<Readonly<Record<string, number>>>(() => tokenMetrics.reduce<Record<string, number>>((prices, metric) => {
+    const numericPrice = Number(metric.price.replace(/[$,]/g, ""));
+    if (Number.isFinite(numericPrice) && numericPrice > 0) {
+      prices[metric.symbol] = numericPrice;
+    }
+    return prices;
+  }, {}), [tokenMetrics]);
 
   const handleOpenDocs = useCallback(() => {
     handleDocsNavigate("", []);
   }, [handleDocsNavigate]);
 
+  const handleOpenStablecoins = useCallback(() => {
+    handleDocsNavigate("learn", ["stablecoins"]);
+  }, [handleDocsNavigate]);
+
+  const handleOpenTreasury = useCallback(() => {
+    handleDocsNavigate("learn", ["treasury"]);
+  }, [handleDocsNavigate]);
+
+  const handleOpenDevelopers = useCallback(() => {
+    handleDocsNavigate("develop", ["overview"]);
+  }, [handleDocsNavigate]);
+
+  const handleOpenGovernance = useCallback(() => {
+    handleDocsNavigate("learn", ["governance"]);
+  }, [handleDocsNavigate]);
+
   const handleOpenMap = useCallback(() => {
-    navigate("/bubbles");
+    navigate("/ecosystem");
   }, [navigate]);
 
   if (isDocsMode) {
+    const docSeoTarget = resolveDocSeoTarget(docSegments);
+    const docPageUrl = `${SITE_URL}/docs/${docSeoTarget.section.slug}/${docSeoTarget.path.join("/")}`;
+    const docPageTitle = `${docSeoTarget.page.title} | Terra Classic Docs`;
+    const docPageDescription = docSeoTarget.page.summary
+      || "Terra Classic documentation covering network operations, native assets, wallets, governance, and development.";
+    const docBreadcrumbItems = [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+      { "@type": "ListItem", position: 2, name: "Documentation", item: `${SITE_URL}/docs` },
+      ...docSeoTarget.trail.map((entry, index) => ({
+        "@type": "ListItem",
+        position: index + 3,
+        name: entry.title,
+        item: `${SITE_URL}/docs/${docSeoTarget.section.slug}/${docSeoTarget.trail.slice(0, index + 1).map((target) => target.slug).join("/")}`,
+      })),
+    ];
+    const docStructuredData = {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": docSeoTarget.section.slug === "develop" || docSeoTarget.section.slug === "full-node" ? "TechArticle" : "Article",
+          "@id": `${docPageUrl}#article`,
+          headline: docSeoTarget.page.title,
+          description: docPageDescription,
+          url: docPageUrl,
+          mainEntityOfPage: { "@type": "WebPage", "@id": docPageUrl },
+          image: OG_IMAGE_URL,
+          dateModified: LAST_UPDATE,
+          inLanguage: "en",
+          author: { "@type": "Organization", "@id": ORGANIZATION_ID, name: "Terra Classic Community" },
+          publisher: { "@type": "Organization", "@id": ORGANIZATION_ID, name: "Terra Classic Community" },
+        },
+        {
+          "@type": "BreadcrumbList",
+          itemListElement: docBreadcrumbItems,
+        },
+      ],
+    };
+
     return (
-      <Suspense fallback={<div style={{ minHeight: 200 }} />}> 
-        <DocsShell
-          docSegments={docSegments}
-          onNavigate={handleDocsNavigate}
-          isDocsSubdomain={isDocsSubdomain}
+      <>
+        <SeoHead
+          title={docPageTitle}
+          description={docPageDescription}
+          canonicalPath={docPageUrl}
+          type="article"
+          noIndex={!docSeoTarget.isValid}
+          modifiedTime={LAST_UPDATE}
+          structuredData={docStructuredData}
         />
-      </Suspense>
+        <Suspense fallback={<div style={{ minHeight: 200 }}>
+          <a href={docPageUrl}>{docSeoTarget.page.title}</a>
+        </div>}>
+          <DocsShell
+            docSegments={docSegments}
+            onNavigate={handleDocsNavigate}
+            isDocsSubdomain={isDocsSubdomain}
+            assetUsdPrices={assetUsdPrices}
+          />
+        </Suspense>
+      </>
     );
   }
 
-  const showExtendedHeroContent: boolean = !appState.isMobile || heroDetailsExpanded;
-  const heroStackSpacingClass: string = !appState.isMobile
-    ? "gap-16"
-    : heroDetailsExpanded
-    ? "gap-12"
-    : "gap-8";
+  const isHomeRoute = location.pathname === "/";
+  const isEcosystemRoute = location.pathname === "/ecosystem" || location.pathname === "/bubbles";
+  const pageSeo = isHomeRoute
+    ? {
+        title: HOME_TITLE,
+        description: HOME_DESCRIPTION,
+        canonicalPath: "/",
+        noIndex: false,
+        structuredData: {
+          "@context": "https://schema.org",
+          "@graph": [
+            organizationStructuredData,
+            websiteStructuredData,
+            {
+              "@type": "WebPage",
+              "@id": `${SITE_URL}/#webpage`,
+              url: `${SITE_URL}/`,
+              name: HOME_TITLE,
+              description: HOME_DESCRIPTION,
+              isPartOf: { "@id": WEBSITE_ID },
+              about: { "@id": ORGANIZATION_ID },
+              primaryImageOfPage: { "@type": "ImageObject", url: OG_IMAGE_URL },
+              inLanguage: "en",
+            },
+          ],
+        },
+      }
+    : isEcosystemRoute
+    ? {
+        title: ECOSYSTEM_TITLE,
+        description: ECOSYSTEM_DESCRIPTION,
+        canonicalPath: "/ecosystem",
+        noIndex: false,
+        structuredData: {
+          "@context": "https://schema.org",
+          "@graph": [
+            organizationStructuredData,
+            websiteStructuredData,
+            {
+              "@type": "CollectionPage",
+              "@id": `${SITE_URL}/ecosystem#webpage`,
+              url: `${SITE_URL}/ecosystem`,
+              name: ECOSYSTEM_TITLE,
+              description: ECOSYSTEM_DESCRIPTION,
+              isPartOf: { "@id": WEBSITE_ID },
+              about: { "@id": ORGANIZATION_ID },
+              inLanguage: "en",
+            },
+            {
+              "@type": "BreadcrumbList",
+              itemListElement: [
+                { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+                { "@type": "ListItem", position: 2, name: "Ecosystem Directory", item: `${SITE_URL}/ecosystem` },
+              ],
+            },
+          ],
+        },
+      }
+    : {
+        title: "Page not found | Terra Classic",
+        description: "The requested Terra Classic page could not be found.",
+        canonicalPath: location.pathname,
+        noIndex: true,
+        structuredData: undefined,
+      };
 
   const homeContent = (
     <div className="relative z-30">
-      <div
-        className={`mx-auto flex max-w-6xl flex-col ${heroStackSpacingClass} px-4 pb-14 pt-8 sm:pt-16 sm:px-10 lg:px-12`}
-      >
+      <div className="mx-auto flex max-w-[1480px] flex-col gap-5 px-5 pb-8 pt-5 sm:px-8 lg:px-10">
         <HeroSection
-          onExploreCategories={handleExploreCategories}
+          onExploreCategories={handleOpenMap}
           onOpenDocs={handleOpenDocs}
           onOpenMap={handleOpenMap}
-          stats={heroStats}
-          isMobile={appState.isMobile}
-          isExpanded={heroDetailsExpanded}
-          onToggleExpand={() =>
-            setHeroDetailsExpanded((previous: boolean) => !previous)
-          }
         />
-        {showExtendedHeroContent && (
-          <MetricsShowcase
-            tokens={tokenMetrics}
-            stakingApr={appState.staking.apr}
-          />
-        )}
-      </div>
-
-      <div className="mx-auto max-w-6xl px-4 sm:px-10 lg:px-12">
-        <CategoryNavigation
-          categories={categories}
-          activeCategory={activeCategory}
-          summaryCount={totalResourceCount}
-          onSelect={handleCategorySelect}
+        <MetricsShowcase
+          tokens={tokenMetrics}
+          stakingApr={appState.staking.apr}
+          onOpenStablecoins={handleOpenStablecoins}
+          onOpenTreasury={handleOpenTreasury}
+          onOpenDevelopers={handleOpenDevelopers}
+          onOpenGovernance={handleOpenGovernance}
+          onOpenMap={handleOpenMap}
         />
       </div>
 
-      <div className="sticky top-0 z-50 backdrop-blur-sm mx-auto max-w-6xl px-4 sm:px-10 lg:px-12">
-        <SortControls
-          sortMode={sortMode}
-          onChangeSortMode={setSortMode}
-          prioritizeOnchain={prioritizeOnchain}
-          onTogglePrioritizeOnchain={() =>
-            setPrioritizeOnchain((previous) => !previous)
-          }
-        />
-      </div>
-
-      <div className="mx-auto flex max-w-6xl flex-col gap-12 px-4 pb-20 pt-6 sm:px-10 lg:px-12">
-        <div
-          ref={categoriesContainerRef}
-          className="flex flex-col gap-6 pt-4 md:flex-row md:flex-wrap"
-        >
-          {visibleCategories.map((category) => (
-            <div
-              key={category}
-              id={`category-${category}`}
-              data-title={categories[category].title}
-              ref={(element) => assignCategoryRef(category, element)}
-              className="w-full md:flex-1"
-            >
-              <CategorySection
-                category={category}
-                sortMode={sortMode}
-                prioritizeOnchain={prioritizeOnchain}
-              />
-            </div>
-          ))}
-        </div>
+      <div className="deferred-section mx-auto max-w-[1480px] px-5 py-10 sm:px-8 lg:px-10">
         <FAQAccordion />
       </div>
     </div>
@@ -575,7 +745,14 @@ const App: React.FC<{
   })();
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-50">
+    <div className="relative min-h-screen overflow-x-clip bg-[#f8fafc] text-slate-900 transition-colors duration-300 dark:bg-[#020b19] dark:text-slate-50">
+      <SeoHead
+        title={pageSeo.title}
+        description={pageSeo.description}
+        canonicalPath={pageSeo.canonicalPath}
+        noIndex={pageSeo.noIndex}
+        structuredData={pageSeo.structuredData}
+      />
       <Helmet>
         <meta
           name="theme-color"
@@ -583,44 +760,37 @@ const App: React.FC<{
         />
       </Helmet>
 
-      <div className="pointer-events-none fixed inset-x-0 top-[-15%] hidden h-[420px] bg-gradient-to-b from-sky-200/70 via-transparent to-transparent dark:from-sky-900/30 sm:block" />
-      <div className="pointer-events-none fixed left-[-12%] top-1/3 hidden h-80 w-80 rounded-full bg-sky-400/25 blur-3xl dark:bg-sky-500/15 sm:block" />
-      <div className="pointer-events-none fixed right-[-14%] top-1/4 hidden h-96 w-96 rounded-full bg-indigo-400/20 blur-[120px] dark:bg-indigo-500/10 sm:block" />
+      <SiteHeader onExplore={handleOpenMap} />
 
-      <div className="fixed right-3 top-3 z-40 sm:right-6 sm:top-6">
-        <ThemeToggle size={appState.isMobile ? "sm" : "md"} />
-      </div>
+      <main id="main-content">
+        <Routes>
+          <Route path="/" element={homeContent} />
+          <Route
+            path="/ecosystem"
+            element={
+              <Suspense fallback={<div style={{ minHeight: 200 }} />}>
+                <ProjectMapPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/bubbles"
+            element={<Navigate to={{ pathname: "/ecosystem", search: location.search }} replace />}
+          />
+          <Route
+            path="*"
+            element={
+              <Suspense
+                fallback={<div style={{ minHeight: 200 }} />}
+              >
+                <NotFoundPage />
+              </Suspense>
+            }
+          />
+        </Routes>
+      </main>
 
-      <Routes>
-        <Route path="/" element={homeContent} />
-        <Route
-          path="/bubbles"
-          element={
-            <Suspense fallback={<div style={{ minHeight: 200 }} />}>
-              <ProjectMapPage />
-            </Suspense>
-          }
-        />
-        <Route
-          path="*"
-          element={
-            <Suspense
-              fallback={<div style={{ minHeight: 200 }} />}
-            >
-              <NotFoundPage />
-            </Suspense>
-          }
-        />
-      </Routes>
-
-      <footer className="relative z-20 border-t border-slate-200/60 bg-white/80 py-10 backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/70">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 text-sm text-slate-500 transition-colors duration-300 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-10 lg:px-12">
-          <p>Built with ❤️ by the Terra Classic community.</p>
-          <div className="flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.3em] text-slate-400 dark:text-slate-500">
-            <span>UPDATED {formattedUpdate}</span>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter lastUpdated={formattedUpdate} />
     </div>
   );
 };

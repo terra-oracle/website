@@ -4,6 +4,7 @@ import startGuide from "../docs/start.md?raw";
 import buildTerraCoreGuide from "../docs/full-node/run-a-full-terra-node/build-terra-core.md?raw";
 import configureGeneralSettingsGuide from "../docs/full-node/run-a-full-terra-node/configure-general-settings.md?raw";
 import classicTransactionBehaviorGuide from "../docs/develop/classic-transaction-behavior.md?raw";
+import developersOverviewGuide from "../docs/develop/overview.md?raw";
 import endpointsGuide from "../docs/develop/endpoints.md?raw";
 import hyperlaneValidatorGuide from "../docs/develop/hyperlane-validator.md?raw";
 import joinNetworkGuide from "../docs/full-node/run-a-full-terra-node/join-a-network.md?raw";
@@ -14,6 +15,7 @@ import troubleshootGuide from "../docs/full-node/run-a-full-terra-node/troublesh
 import validatorColumbus5Guide from "../docs/full-node/run-a-full-terra-node/validator-columbus-5.md?raw";
 import validatorRebel2Guide from "../docs/full-node/run-a-full-terra-node/validator-rebel-2.md?raw";
 import fullNodeOverviewGuide from "../docs/full-node/overview.md?raw";
+import validatorsOverviewGuide from "../docs/full-node/validators.md?raw";
 import localnetGuide from "../docs/develop/how-to/localnet/terra-core-localnet.md?raw";
 import keplrOverviewGuide from "../docs/learn/keplr/keplr.md?raw";
 import keplrInstallGuide from "../docs/learn/keplr/keplr-install.md?raw";
@@ -29,6 +31,9 @@ import galaxyStationSendGuide from "../docs/learn/galaxy-station/galaxy-station-
 import galaxyStationStakingGuide from "../docs/learn/galaxy-station/galaxy-station-staking.md?raw";
 import galaxyStationGovernanceGuide from "../docs/learn/galaxy-station/galaxy-station-governance.md?raw";
 import learnProtocolGuide from "../docs/learn/protocol.md?raw";
+import learnStablecoinsGuide from "../docs/learn/stablecoins.md?raw";
+import learnTreasuryGuide from "../docs/learn/treasury.md?raw";
+import learnGovernanceGuide from "../docs/learn/governance.md?raw";
 import learnFeesGuide from "../docs/learn/fees.md?raw";
 import learnGlossaryGuide from "../docs/learn/glossary.md?raw";
 import learnAssetsGuide from "../docs/learn/assets.md?raw";
@@ -77,6 +82,23 @@ import smartContractsSetupGuide from "../docs/develop/smart-contracts/set-up-loc
 import smartContractsWriteGuide from "../docs/develop/smart-contracts/write-smart-contract.md?raw";
 import smartContractsInteractGuide from "../docs/develop/smart-contracts/interact-with-smart-contract.md?raw";
 import smartContractsManageCw20Guide from "../docs/develop/smart-contracts/manage-cw20-tokens.md?raw";
+
+const markdownSourceModules = import.meta.glob<string>("../docs/**/*.md", {
+  eager: true,
+  import: "default",
+  query: "?raw",
+});
+
+const markdownSourcePathByContent = new Map<string, string>(
+  Object.entries(markdownSourceModules).map(([modulePath, markdown]) => [
+    markdown,
+    modulePath.replace(/^\.\.\//, "src/"),
+  ]),
+);
+
+export function getDocSourcePath(page: DocPage): string | undefined {
+  return page.markdown ? markdownSourcePathByContent.get(page.markdown) : undefined;
+}
 
 const systemConfiguration: DocPage = {
   slug: "system-configuration",
@@ -176,6 +198,13 @@ const fullNodeEndpoints: DocPage = {
   markdown: endpointsGuide,
 };
 
+const validatorsOverview: DocPage = {
+  slug: "validators",
+  title: "Validators",
+  summary: "Plan, launch, secure, and operate a Terra Classic validator with production-grade infrastructure and monitoring.",
+  markdown: validatorsOverviewGuide,
+};
+
 const learnOverview: DocPage = {
   slug: "overview",
   title: "Start here",
@@ -186,8 +215,32 @@ const learnOverview: DocPage = {
 const learnProtocol: DocPage = {
   slug: "protocol",
   title: "Terra Classic protocol",
-  summary: "How Terra Classic stablecoins, LUNC, staking, and governance interconnect.",
+  summary: "How Terra Classic's native and historical fiat-denominated assets, staking, and governance interconnect.",
   markdown: learnProtocolGuide,
+};
+
+const learnStablecoins: DocPage = {
+  slug: "stablecoins",
+  title: "Assets & denominations",
+  summary: "Understand LUNC and Terra Classic's historical fiat-denominated assets, their network denominations, uses, and risks.",
+  livePanel: "assets",
+  markdown: learnStablecoinsGuide,
+};
+
+const learnTreasury: DocPage = {
+  slug: "treasury",
+  title: "Community Pool & Treasury",
+  summary: "Follow Terra Classic's governed on-chain reserves, recent proposals, and the rules that control community spending.",
+  livePanel: "treasury",
+  markdown: learnTreasuryGuide,
+};
+
+const learnGovernance: DocPage = {
+  slug: "governance",
+  title: "Governance",
+  summary: "Follow active proposals, current voting parameters, and the rules that shape Terra Classic on-chain decisions.",
+  livePanel: "governance",
+  markdown: learnGovernanceGuide,
 };
 
 const learnFees: DocPage = {
@@ -315,6 +368,13 @@ const developTxBestPractices: DocPage = {
   title: "Tx best practices",
   summary: "Practical guidance for burn tax, Tax2Gas, tax-free contract funding, and safe Terra Classic transaction flows.",
   markdown: classicTransactionBehaviorGuide,
+};
+
+const developOverview: DocPage = {
+  slug: "overview",
+  title: "Developers",
+  summary: "Build, innovate, and contribute to the Terra Classic ecosystem with guides, endpoints, modules, and open-source tooling.",
+  markdown: developersOverviewGuide,
 };
 
 const developHyperlaneValidator: DocPage = {
@@ -606,13 +666,13 @@ export const docSections: readonly DocSection[] = [
     title: "Run a full node",
     description:
       "Provision, sync, and operate Terra Classic full nodes with production-grade observability and security.",
-    pages: [fullNodeOverview, fullNodeEndpoints],
+    pages: [fullNodeOverview, validatorsOverview, fullNodeEndpoints],
   },
   {
     slug: "develop",
     title: "Develop",
     description: "Build Terra Classic dApps, run localnets, and reference Terra Core modules.",
-    pages: [developLocalnet, developTxBestPractices, developHyperlaneValidator, developBuilderTooling, developSmartContracts, developModuleSpecifications],
+    pages: [developOverview, developLocalnet, developTxBestPractices, developHyperlaneValidator, developBuilderTooling, developSmartContracts, developModuleSpecifications],
   },
   {
     slug: "learn",
@@ -621,6 +681,9 @@ export const docSections: readonly DocSection[] = [
     pages: [
       learnOverview,
       learnProtocol,
+      learnStablecoins,
+      learnTreasury,
+      learnGovernance,
       learnWallets,
       learnStaking,
       learnFees,

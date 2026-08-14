@@ -1,6 +1,7 @@
 import { Delaunay } from "d3-delaunay";
 import { ProjectLink, projects } from "../../data/projects";
 import { categories as sourceCategories } from "../../data/categories";
+import { siteLinks } from "../../data/site-links";
 import { clampNodeToViewport } from "./geometry";
 import { createMulberry32, stringToSeed } from "../../utils/random";
 import terraClassicLogoUrl from "../../assets/terra-classic.svg";
@@ -58,6 +59,7 @@ const MAX_CELL_SIZE: number = 320;
 const COLUMN_DENOMINATOR: number = 6;
 
 const sanitizeText = (value?: string): string => (value ?? "").trim();
+const normalizeLogoPath = (value?: string): string | undefined => value?.replace(/^\/public/, "");
 
 const computeCellSize = (viewportWidth: number): number => {
   const candidate: number = viewportWidth / COLUMN_DENOMINATOR;
@@ -169,7 +171,7 @@ const normalizeLink = (
     centroid,
     polygon,
     hasLogo: Boolean((link as { logo?: string }).logo),
-    logoSrc: (link as { logo?: string }).logo,
+    logoSrc: normalizeLogoPath((link as { logo?: string }).logo),
     iconKey,
     tooltip: `Open ${link.name}${sanitizedDescription.length > 0 ? `: ${sanitizedDescription}` : ""}`,
   };
@@ -276,7 +278,7 @@ const createHubNode = (centroid: PointTuple, polygon: Polygon): ProjectMapNode =
   shortLabel: HUB_NODE.name,
   description: HUB_NODE.description,
   indicator: "support",
-  url: "https://classic.terra.money",
+  url: siteLinks.website,
   categoryId: "terra-hub",
   categoryTitle: "Network Hub",
   radius: HUB_NODE.radius,

@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Helmet } from "react-helmet-async";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Menu, X } from "lucide-react";
+import { ArrowRight, ChevronRight, Github, Menu, X } from "lucide-react";
 import type { DocPage } from "../../types/doc-page";
 import type { DocSection } from "../../types/doc-section";
 import DocContent from "./doc-content";
 import DocSidebar from "./doc-sidebar";
-import { docSections } from "../../data/docs";
-import ThemeToggle from "../ThemeToggle";
+import { docSections, getDocSourcePath } from "../../data/docs";
+import SiteHeader from "../site-header";
+import terraClassicLogoUrl from "../../assets/terra-classic.svg";
 import type { DocNavigationOptions } from "../../types/doc-navigation";
 import type { DocPageWithPath } from "../../types/doc-page-with-path";
+import { extractDocMarkdownHeadings } from "../../lib/docs-markdown";
 
 type DocsShellProps = {
   readonly docSegments: readonly string[];
   readonly onNavigate: (sectionSlug: string, pagePath?: readonly string[], options?: DocNavigationOptions) => void;
   readonly isDocsSubdomain: boolean;
+  readonly assetUsdPrices: Readonly<Record<string, number>>;
 };
 
 type ActiveDocTarget = {
@@ -76,34 +77,27 @@ function resolveActiveTarget(segments: readonly string[]): ActiveDocTarget {
   };
 }
 
-function DocsShell({ docSegments, onNavigate, isDocsSubdomain }: DocsShellProps): JSX.Element {
+function DocsShell({ docSegments, onNavigate, isDocsSubdomain, assetUsdPrices }: DocsShellProps): JSX.Element {
   const { section, page, trail, path } = useMemo(() => resolveActiveTarget(docSegments), [docSegments]);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
   const homeHref: string = isDocsSubdomain ? "https://terra-classic.io" : "/";
-  const docsBaseUrl: string = isDocsSubdomain ? "https://docs.terra-classic.io" : "https://terra-classic.io/docs";
-  const pageUrl: string = path.length > 0
-    ? `${docsBaseUrl}/${section.slug}/${path.join("/")}`
-    : `${docsBaseUrl}/${section.slug}`;
-  const siteName: string = "Terra Classic Documentation";
-  const pageTitle: string = `${page.title} · Terra Classic Docs`;
-  const pageDescription: string = page.summary
-    || "Terra Classic documentation covering full node operations, network endpoints, wallets, and governance.";
-  const structuredData = {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    name: siteName,
-    alternateName: "Terra Classic Docs",
-    url: docsBaseUrl,
-    publisher: {
-      "@type": "Organization",
-      name: "Terra Classic",
-      logo: {
-        "@type": "ImageObject",
-        url: "https://terra-classic.io/favicon-512.png",
-      },
-    },
-  };
-
+  const pageSourcePath: string | undefined = getDocSourcePath(page);
+  const editPageUrl: string = pageSourcePath
+    ? `https://github.com/terra-classic-io/website/edit/main/${pageSourcePath}`
+    : "https://github.com/terra-classic-io/website";
+  const pageOutline = useMemo(() => {
+    const contentOutline = page.sections?.map((contentSection) => ({ title: contentSection.title, id: "" }))
+      ?? extractDocMarkdownHeadings(page.markdown ?? "");
+    if (page.livePanel !== "treasury") {
+      return contentOutline;
+    }
+    return [
+      { title: "On-chain Treasury snapshot", id: "on-chain-treasury" },
+      { title: "Community Pool holdings", id: "treasury-holdings" },
+      { title: "Recent governance proposals", id: "recent-proposals" },
+      ...contentOutline,
+    ];
+  }, [page.livePanel, page.markdown, page.sections]);
   const { previousPage, nextPage } = useMemo<{ previousPage?: DocPageWithPath; nextPage?: DocPageWithPath }>(() => {
     if (orderedDocPages.length === 0) {
       return { previousPage: undefined, nextPage: undefined };
@@ -189,39 +183,17 @@ function DocsShell({ docSegments, onNavigate, isDocsSubdomain }: DocsShellProps)
   }, [closeSidebar, isSidebarOpen]);
 
   return (
-    <div className="relative min-h-screen bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-50">
-      <Helmet>
-        <title>{pageTitle}</title>
-        <meta name="description" content={pageDescription} />
-        <meta name="application-name" content={siteName} />
-        <meta name="apple-mobile-web-app-title" content={siteName} />
-        <meta name="robots" content="index,follow" />
-        <meta property="og:type" content="article" />
-        <meta property="og:title" content={pageTitle} />
-        <meta property="og:description" content={pageDescription} />
-        <meta property="og:site_name" content={siteName} />
-        <meta property="og:url" content={pageUrl} />
-        <meta property="og:image" content="https://terra-classic.io/og-image.jpg" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={pageTitle} />
-        <meta name="twitter:description" content={pageDescription} />
-        <meta name="twitter:image" content="https://terra-classic.io/og-image.jpg" />
-        <link rel="canonical" href={pageUrl} />
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
-        <link rel="shortcut icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="manifest" href="/site.webmanifest" />
-        <script type="application/ld+json">{JSON.stringify(structuredData)}</script>
-      </Helmet>
-
-      <div className="pointer-events-none fixed inset-x-0 top-[-15%] h-[420px] bg-gradient-to-b from-sky-200/60 via-transparent to-transparent dark:from-sky-800/40" />
-      <div className="pointer-events-none fixed left-[-12%] top-1/4 hidden h-72 w-72 rounded-full bg-sky-400/20 blur-3xl dark:bg-sky-500/25 md:block" />
-      <div className="pointer-events-none fixed right-[-14%] top-1/3 hidden h-80 w-80 rounded-full bg-indigo-400/15 blur-[120px] dark:bg-indigo-500/20 md:block" />
-
-      <div className="fixed top-3 right-3 z-40 sm:top-6 sm:right-6">
-        <ThemeToggle variant="pill" size="sm" />
-      </div>
+    <div className="relative min-h-screen bg-[#f8fafc] text-slate-900 transition-colors duration-300 dark:bg-[#020b19] dark:text-slate-50">
+      <SiteHeader
+        homeHref={homeHref}
+        docsHref={isDocsSubdomain ? "/" : "/docs"}
+        searchLabel="Search docs..."
+        onExplore={() => {
+          if (typeof window !== "undefined") {
+            window.location.assign(`${homeHref.replace(/\/$/, "")}/ecosystem`);
+          }
+        }}
+      />
 
       {isSidebarOpen ? (
         <div className="fixed inset-0 z-50 flex lg:hidden" role="dialog" aria-modal="true" aria-labelledby={DRAWER_TITLE_ID}>
@@ -260,7 +232,7 @@ function DocsShell({ docSegments, onNavigate, isDocsSubdomain }: DocsShellProps)
         </div>
       ) : null}
 
-      <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-8 px-4 pb-16 pt-12 sm:px-10 lg:flex-row lg:px-12">
+      <div className="relative z-10 mx-auto grid max-w-[1480px] gap-5 px-4 pb-16 pt-5 sm:px-8 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-10 xl:grid-cols-[280px_minmax(0,1fr)_250px]">
         <div className="flex flex-col gap-4 lg:hidden">
           <div className="flex items-center justify-between">
             <button
@@ -272,16 +244,9 @@ function DocsShell({ docSegments, onNavigate, isDocsSubdomain }: DocsShellProps)
             >
               <Menu size={16} />
             </button>
-            <Link
-              to={homeHref}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-300/80 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.32em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500"
-            >
-              <ArrowLeft size={16} />
-              Back
-            </Link>
           </div>
         </div>
-        <aside className="hidden lg:block lg:w-72">
+        <aside className="hidden rounded-2xl border border-slate-200 bg-white/75 p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.02] lg:block">
           <DocSidebar
             sections={docSections}
             activeSection={section}
@@ -291,39 +256,104 @@ function DocsShell({ docSegments, onNavigate, isDocsSubdomain }: DocsShellProps)
             onNavigate={handleSidebarNavigate}
           />
         </aside>
-        <main className="flex-1 space-y-8">
-          <header className="hidden items-start justify-between gap-6 lg:flex">
+        <main className="min-w-0 space-y-0 overflow-hidden rounded-2xl border border-slate-200 bg-white/75 shadow-sm dark:border-white/10 dark:bg-white/[0.02]">
+          <header className="relative flex min-h-[210px] items-center justify-between gap-6 overflow-hidden border-b border-slate-200 bg-gradient-to-r from-white via-white to-blue-50 px-6 py-10 dark:border-white/10 dark:from-[#061121] dark:via-[#071426] dark:to-blue-950/50 sm:px-9">
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400">
-                {section.title}
-              </p>
-              <h1 className="text-4xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+              <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <a href={homeHref} className="transition hover:text-blue-600 dark:hover:text-blue-400">Home</a>
+                <ChevronRight size={13} aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => handleNavigate(section.slug, [section.pages[0]?.slug ?? ""])}
+                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
+                >
+                  {section.title}
+                </button>
+                {trail.map((entry, index) => {
+                  const isCurrentPage = index === trail.length - 1;
+                  const targetPath = trail.slice(0, index + 1).map((target) => target.slug);
+
+                  return (
+                    <span key={`${entry.slug}-${index}`} className="flex items-center gap-1.5">
+                      <ChevronRight size={13} aria-hidden="true" />
+                      {isCurrentPage ? (
+                        <span className="font-medium text-slate-700 dark:text-slate-200" aria-current="page">{entry.title}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleNavigate(section.slug, targetPath)}
+                          className="transition hover:text-blue-600 dark:hover:text-blue-400"
+                        >
+                          {entry.title}
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </nav>
+              <h1 className="text-4xl font-semibold tracking-[-0.04em] text-slate-950 dark:text-white">
                 {page.title}
               </h1>
               <p className="max-w-2xl text-base text-slate-600 dark:text-slate-300">{page.summary}</p>
             </div>
-            <div className="flex flex-col items-end gap-3">
-              <Link
-                to={homeHref}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-300/80 px-5 py-2 text-xs font-semibold uppercase tracking-[0.32em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500"
-              >
-                <ArrowLeft size={16} />
-                Back to ecosystem
-              </Link>
+            <div className="pointer-events-none absolute -right-12 top-1/2 hidden h-60 w-60 -translate-y-1/2 items-center justify-center rounded-full border border-blue-300/30 bg-blue-500/5 shadow-[0_0_80px_rgba(37,99,235,0.16)] sm:flex dark:border-blue-500/20 dark:bg-blue-500/10">
+              <div className="flex h-28 w-28 items-center justify-center rounded-full bg-blue-600/10 shadow-[0_0_60px_rgba(37,99,235,0.25)]">
+                <img src={terraClassicLogoUrl} alt="" className="h-24 w-24 opacity-90" />
+              </div>
             </div>
           </header>
-          <div className="lg:hidden">
-            <p className="mt-4 text-base text-slate-600 dark:text-slate-300">{page.summary}</p>
+          {page.heroImage ? (
+            <div className="px-6 pt-8 sm:px-9 sm:pt-10">
+              <div className="relative h-64 overflow-hidden rounded-2xl border border-blue-200/70 bg-blue-50 shadow-sm dark:border-blue-500/20 dark:bg-[#020b19] sm:h-72">
+                <img
+                  src={page.heroImage.light}
+                  alt={page.heroImage.alt}
+                  className="h-full w-full object-cover object-[center_72%] dark:hidden"
+                />
+                <img
+                  src={page.heroImage.dark}
+                  alt={page.heroImage.alt}
+                  className="hidden h-full w-full object-cover object-[center_72%] dark:block"
+                />
+              </div>
+            </div>
+          ) : null}
+          <div className="px-6 py-8 sm:px-9 sm:py-10">
+            <DocContent
+              page={page}
+              section={section}
+              currentPath={path}
+              onNavigate={handleNavigate}
+              previousPage={previousPage}
+              nextPage={nextPage}
+              assetUsdPrices={assetUsdPrices}
+            />
           </div>
-          <DocContent
-            page={page}
-            section={section}
-            currentPath={path}
-            onNavigate={handleNavigate}
-            previousPage={previousPage}
-            nextPage={nextPage}
-          />
         </main>
+
+        <aside className="hidden space-y-4 xl:block">
+          <section className="sticky top-[96px] space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white/75 p-5 shadow-sm dark:border-white/10 dark:bg-white/[0.02]">
+              <h2 className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">On this page</h2>
+              <ul className="mt-5 space-y-4 border-l border-slate-200 pl-4 text-xs dark:border-white/10">
+                <li className="font-semibold text-blue-600 dark:text-blue-400">{page.title}</li>
+                {pageOutline.slice(0, 6).map((outlineItem) => (
+                  <li key={outlineItem.title} className="text-slate-500 dark:text-slate-400">
+                    {outlineItem.id ? (
+                      <a href={`#${outlineItem.id}`} className="transition hover:text-blue-600 dark:hover:text-blue-400">
+                        {outlineItem.title}
+                      </a>
+                    ) : outlineItem.title}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <a href={editPageUrl} target="_blank" rel="noopener noreferrer" className="group block rounded-2xl border border-slate-200 bg-white/75 p-5 shadow-sm transition hover:border-blue-300 dark:border-white/10 dark:bg-white/[0.02] dark:hover:border-blue-500/40">
+              <h2 className="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Edit this page</h2>
+              <span className="mt-4 flex items-center gap-3 text-xs font-semibold text-slate-700 dark:text-slate-200"><Github size={18} /> Improve on GitHub <ArrowRight size={14} className="ml-auto transition group-hover:translate-x-1" /></span>
+            </a>
+          </section>
+        </aside>
       </div>
     </div>
   );

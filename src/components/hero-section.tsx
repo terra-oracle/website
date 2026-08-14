@@ -1,187 +1,258 @@
-/**
- * @fileoverview HeroSection component renders the top-of-page hero experience with calls to action.
- */
-
-import { ArrowDown, ChevronDown, Globe, ShieldCheck, Wallet } from 'lucide-react';
-import terraClassicLogoUrl from '../assets/terra-classic.svg';
-
-type HeroStatistic = {
-  readonly label: string;
-  readonly value: string;
-  readonly description: string;
-};
+import { useEffect, useState, type CSSProperties } from "react";
+import { ArrowRight, BookOpen, ExternalLink } from "lucide-react";
+import terraClassicLogoUrl from "../assets/terra-classic.svg";
+import { projects } from "../data/projects";
+import { stablecoinAssets } from "../data/stablecoins";
+import CoreReleaseBanner from "./core-release-banner";
+import ResilientImage from "./resilient-image";
 
 type HeroSectionProps = {
   readonly onExploreCategories: () => void;
   readonly onOpenDocs: () => void;
   readonly onOpenMap: () => void;
-  readonly stats: readonly HeroStatistic[];
-  readonly isMobile: boolean;
-  readonly isExpanded: boolean;
-  readonly onToggleExpand: () => void;
 };
 
-/**
- * HeroSection surfaces the primary narrative for Terra Classic alongside high-impact calls to action.
- */
+type OrbitBadge = {
+  readonly symbol: string;
+  readonly name: string;
+  readonly logo: string;
+  readonly orbitAngle: number;
+  readonly orbitRadius: string;
+  readonly orbitDuration: string;
+  readonly orbitDirection: 1 | -1;
+  readonly orbitScaleY: number;
+  readonly orbitTilt: number;
+};
+
+type OrbitLayout = Omit<OrbitBadge, "symbol" | "name" | "logo"> & {
+  readonly denom: string;
+};
+
+const orbitLayouts: readonly OrbitLayout[] = [
+  { denom: "ueur", orbitAngle: 180, orbitRadius: "clamp(210px, 21vw, 300px)", orbitDuration: "90s", orbitDirection: 1, orbitScaleY: 0.42, orbitTilt: 12 },
+  { denom: "ucny", orbitAngle: 0, orbitRadius: "clamp(210px, 21vw, 300px)", orbitDuration: "90s", orbitDirection: 1, orbitScaleY: 0.42, orbitTilt: 12 },
+  { denom: "uusd", orbitAngle: 90, orbitRadius: "clamp(190px, 19vw, 270px)", orbitDuration: "106s", orbitDirection: -1, orbitScaleY: 0.58, orbitTilt: -17 },
+  { denom: "ukrw", orbitAngle: 270, orbitRadius: "clamp(190px, 19vw, 270px)", orbitDuration: "106s", orbitDirection: -1, orbitScaleY: 0.58, orbitTilt: -17 },
+  { denom: "ujpy", orbitAngle: -30, orbitRadius: "clamp(180px, 17vw, 230px)", orbitDuration: "122s", orbitDirection: 1, orbitScaleY: 0.78, orbitTilt: 48 },
+  { denom: "uaud", orbitAngle: 150, orbitRadius: "clamp(180px, 17vw, 230px)", orbitDuration: "122s", orbitDirection: 1, orbitScaleY: 0.78, orbitTilt: 48 },
+  { denom: "uluna", orbitAngle: -110, orbitRadius: "clamp(172px, 15vw, 198px)", orbitDuration: "138s", orbitDirection: -1, orbitScaleY: 1, orbitTilt: 0 },
+  { denom: "ugbp", orbitAngle: 70, orbitRadius: "clamp(172px, 15vw, 198px)", orbitDuration: "138s", orbitDirection: -1, orbitScaleY: 1, orbitTilt: 0 },
+];
+
+// Add a denomination from orbitLayouts here to make its badge visible again.
+const ACTIVE_HERO_ASSET_DENOMS = new Set(["uluna", "uusd"]);
+
+const orbitBadges: readonly OrbitBadge[] = orbitLayouts.flatMap((layout) => {
+  if (!ACTIVE_HERO_ASSET_DENOMS.has(layout.denom)) {
+    return [];
+  }
+
+  const asset = stablecoinAssets.find((candidate) => candidate.denom === layout.denom);
+  if (!asset) {
+    return [];
+  }
+
+  return [{
+    ...layout,
+    symbol: asset.symbol,
+    name: asset.name,
+    logo: asset.logo ?? terraClassicLogoUrl,
+  }];
+});
+
+type OrbitStyle = CSSProperties & {
+  readonly "--orbit-angle": string;
+  readonly "--orbit-counter-angle": string;
+  readonly "--orbit-duration": string;
+  readonly "--orbit-radius": string;
+  readonly "--orbit-turn": string;
+  readonly "--orbit-counter-turn": string;
+  readonly "--orbit-scale-y": string;
+  readonly "--orbit-inverse-scale-y": string;
+  readonly "--orbit-tilt": string;
+  readonly "--orbit-counter-tilt": string;
+};
+
+const MAX_RANDOM_PROJECTS = 5;
+
+function pickRandomProjects(): (typeof projects)[number][] {
+  const shuffledProjects = [...projects];
+  for (let index = shuffledProjects.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffledProjects[index], shuffledProjects[randomIndex]] = [shuffledProjects[randomIndex], shuffledProjects[index]];
+  }
+  return shuffledProjects.slice(0, MAX_RANDOM_PROJECTS);
+}
+
+function normalizeLogoPath(logo?: string): string | undefined {
+  if (!logo) {
+    return undefined;
+  }
+  return logo.replace(/^\/public/, "");
+}
+
 function HeroSection({
   onExploreCategories,
   onOpenDocs,
   onOpenMap,
-  stats,
-  isMobile,
-  isExpanded,
-  onToggleExpand,
 }: HeroSectionProps): JSX.Element {
-  const shouldShowDetails: boolean = !isMobile || isExpanded;
+  const [randomProjects, setRandomProjects] = useState<(typeof projects)[number][]>(() => projects.slice(0, MAX_RANDOM_PROJECTS));
+
+  useEffect(() => {
+    setRandomProjects(pickRandomProjects());
+  }, []);
 
   return (
-    <section className="relative overflow-hidden rounded-[32px] border border-slate-200/70 bg-gradient-to-br from-white/92 via-white/70 to-slate-100/85 p-5 shadow-[0_20px_40px_-30px_rgba(15,23,42,0.45)] backdrop-blur-xl transition dark:border-slate-800/70 dark:bg-gradient-to-br dark:from-slate-950/88 dark:via-slate-950/60 dark:to-slate-900/75 sm:p-10">
-      <div className="hero-grid-overlay hidden lg:block" />
-      <div className="absolute left-[-24px] top-[-36px] hidden h-48 w-48 rounded-full bg-sky-500/18 blur-3xl dark:bg-sky-500/12 lg:block" />
-      <div className="absolute right-[-20px] bottom-[-32px] hidden h-44 w-44 rounded-full bg-indigo-500/18 blur-3xl dark:bg-indigo-500/12 lg:block" />
-      <img
-        src={terraClassicLogoUrl}
-        alt=""
-        aria-hidden="true"
-        className="pointer-events-none absolute left-[-110px] top-1/2 hidden w-[640px] -translate-y-2/3 select-none opacity-[0.05] mix-blend-luminosity dark:opacity-[0.12] lg:block xl:left-[-140px]"
-      />
+    <div className="space-y-4">
+      <CoreReleaseBanner />
 
-      <div className="relative z-10 flex flex-col gap-7 lg:flex-row lg:items-center">
-        <div className="max-w-2xl space-y-4 lg:space-y-5">
-          <div className="space-y-4">
-            <h1 className="text-[2.4rem] font-semibold leading-[1.18] tracking-tight text-slate-900 dark:text-white sm:text-[2.9rem] lg:text-[3.1rem]">
-              <span className="hidden sm:inline">Everything you need to explore, build and stake on the</span><span className="inline sm:hidden">The</span> <strong>Terra Classic</strong> network.
+      <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/70 px-6 py-12 shadow-[0_30px_90px_-55px_rgba(15,23,42,0.28)] dark:border-white/10 dark:bg-white/[0.015] sm:px-10 lg:min-h-[570px] lg:px-12 lg:py-16">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_48%,rgba(37,99,235,0.12),transparent_35%)] dark:bg-[radial-gradient(circle_at_72%_48%,rgba(37,99,235,0.2),transparent_38%)]" />
+        <div className="relative z-10 grid items-center gap-12 lg:grid-cols-[0.82fr_1.18fr]">
+          <div className="max-w-[590px]">
+            <p className="mb-5 text-[11px] font-bold uppercase tracking-[0.24em] text-blue-600 dark:text-blue-400">
+              Community-owned. Built for everyone.
+            </p>
+            <h1 className="text-[clamp(3rem,6vw,5.5rem)] font-semibold leading-[0.98] tracking-[-0.065em] text-slate-950 dark:text-white">
+              Powering the future of <span className="font-bold text-blue-600 dark:text-blue-500">digital money.</span>
             </h1>
-            {shouldShowDetails ? (
-              <p className="text-base leading-[1.7] text-slate-600 dark:text-slate-300 lg:text-[17px]">
-                This is a community-curated resource hub for Terra Classic. As a decentralized and community-owned network, Terra-Classic has no official website. On this page you can find applications, tooling, and knowledge to help teams ship faster and empower the
-                global Terra Classic community. Dive into the ecosystem, connect with infrastructure and find your place in the Terra Classic community.
-              </p>
-            ) : (
-              <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                Explore apps, tooling, and guidance curated for Terra Classic users and builders.
-              </p>
-            )}
+            <p className="mt-7 max-w-lg text-base leading-7 text-slate-600 dark:text-slate-300 sm:text-[17px]">
+              Terra Classic is decentralized infrastructure for native assets and programmable finance, maintained by a global community for a global economy.
+            </p>
+
+            <div className="mt-8 flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={onExploreCategories}
+                className="inline-flex h-12 items-center gap-2 rounded-lg bg-blue-600 px-6 text-sm font-semibold text-white shadow-[0_18px_38px_-16px_rgba(37,99,235,0.75)] transition hover:-translate-y-0.5 hover:bg-blue-500"
+              >
+                Explore ecosystem
+                <ArrowRight size={17} />
+              </button>
+              <button
+                type="button"
+                onClick={onOpenDocs}
+                className="inline-flex h-12 items-center gap-2 px-2 text-sm font-semibold text-slate-700 transition hover:text-blue-600 dark:text-slate-200 dark:hover:text-blue-400"
+              >
+                View documentation
+                <BookOpen size={17} />
+              </button>
+            </div>
+
           </div>
-          <div className="flex flex-wrap items-center gap-3 justify-center sm:justify-start">
-            <button
-              type="button"
-              onClick={onExploreCategories}
-              className="group inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/20 transition hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-            >
-              Explore Ecosystem
-              <ArrowDown size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={onOpenDocs}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-300/80 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
-            >
-              View Documentation
-            </button>
-            <button
-              type="button"
-              onClick={onOpenMap}
-              className="hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-300/80 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
-            >
-              Ecosystem Map
-            </button>
-          </div>
-          <div className="hidden pt-6 text-sm text-slate-600 dark:text-slate-300 lg:grid lg:grid-cols-3 lg:gap-4">
-            <div className="group flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm transition hover:-translate-y-1 hover:border-sky-400/70 dark:border-slate-800/60 dark:bg-slate-900/60">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 transition group-hover:bg-sky-500/20 dark:text-sky-300">
-                <ShieldCheck size={18} />
-              </span>
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-slate-500 dark:text-slate-400">
-                  Hardened
-                </p>
-                <p className="font-medium text-slate-900 dark:text-slate-100">Validator-grade playbooks & monitoring</p>
+
+          <div className="relative mx-auto hidden min-h-[490px] w-full max-w-[720px] lg:block" aria-hidden="true">
+            <span className="network-core-halo absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
+            <div className="network-globe absolute left-1/2 top-1/2 h-[390px] w-[390px] -translate-x-1/2 -translate-y-1/2 xl:h-[430px] xl:w-[430px]">
+              <span className="network-globe__latitude network-globe__latitude--one" />
+              <span className="network-globe__latitude network-globe__latitude--two" />
+              <span className="network-globe__longitude network-globe__longitude--one" />
+              <span className="network-globe__longitude network-globe__longitude--two" />
+              <span className="network-globe__star network-globe__star--one" />
+              <span className="network-globe__star network-globe__star--two" />
+              <span className="network-globe__star network-globe__star--three" />
+              <div className="absolute left-1/2 top-1/2 flex h-[340px] w-[340px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-blue-300/30 bg-[radial-gradient(circle,rgba(96,165,250,0.28),rgba(37,99,235,0.1)_62%,transparent_78%)] shadow-[0_0_180px_rgba(37,99,235,0.56)]">
+                <img
+                  src={terraClassicLogoUrl}
+                  alt=""
+                  className="relative left-[6px] top-[6px] h-[320px] w-[320px] max-w-none object-contain drop-shadow-[0_30px_54px_rgba(14,60,165,0.55)]"
+                />
               </div>
             </div>
-            <div className="group flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm transition hover:-translate-y-1 hover:border-indigo-400/70 dark:border-slate-800/60 dark:bg-slate-900/60">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 transition group-hover:bg-indigo-500/20 dark:text-indigo-300">
-                <Globe size={18} />
-              </span>
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-slate-500 dark:text-slate-400">
-                  Network reach
-                </p>
-                <p className="font-medium text-slate-900 dark:text-slate-100">Global RPC, LCD, and gRPC access points</p>
-              </div>
-            </div>
-            <div className="group flex items-start gap-3 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm transition hover:-translate-y-1 hover:border-emerald-400/70 dark:border-slate-800/60 dark:bg-slate-900/60">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 transition group-hover:bg-emerald-500/20 dark:text-emerald-300">
-                <Wallet size={18} />
-              </span>
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-slate-500 dark:text-slate-400">
-                  Wallet ready
-                </p>
-                <p className="font-medium text-slate-900 dark:text-slate-100">Supported by major wallets and scripts</p>
-              </div>
-            </div>
-          </div>
-          {isMobile && (
-            <button
-              type="button"
-              onClick={onToggleExpand}
-              aria-expanded={isExpanded}
-              className="flex items-center gap-2 rounded-full border border-slate-300/80 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.28em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-500 mx-auto mt-4 -mb-4"
-            >
-              {isExpanded ? 'Hide insights' : 'Show insights'}
-              <ChevronDown
-                size={16}
-                className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-              />
-            </button>
-          )}
-        </div>
-        {shouldShowDetails && (
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200/70 bg-white/85 p-5 shadow-[0_16px_32px_-24px_rgba(15,23,42,0.4)] backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/65">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 via-purple-500 to-blue-600 text-white shadow-lg shadow-sky-500/30">
-                <ShieldCheck size={24} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400">
-                  Why Terra Classic
-                </p>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  Composable. Decentralised. Community-led.
-                </h3>
-              </div>
-            </div>
-            <ul className="mt-5 space-y-4 text-sm text-slate-600 dark:text-slate-300">
-              <li className="flex items-start gap-3">
-                <span className="mt-1 h-2 w-2 rounded-full bg-gradient-to-r from-sky-500 to-blue-600" />
-                Enterprise-grade infrastructure, observability, and tooling curated for production workloads.
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="mt-1 h-2 w-2 rounded-full bg-gradient-to-r from-sky-500 to-blue-600" />
-                Community governance and support from dedicated volunteers and teams to accelerate builders.
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="mt-1 h-2 w-2 rounded-full bg-gradient-to-r from-sky-500 to-blue-600" />
-                Cross-chain connectivity across Cosmos, Ethereum, and beyond via IBC and bridge partners.
-              </li>
-            </ul>
-            <dl className="mt-5 grid gap-3 border-t border-slate-200 pt-5 text-sm dark:border-slate-800">
-              {stats.map((stat) => (
-                <div key={stat.label} className="flex items-start justify-between gap-3">
-                  <dt className="text-slate-500 dark:text-slate-400">{stat.label}</dt>
-                  <dd className="text-right">
-                    <p className="text-lg font-semibold text-slate-900 dark:text-white">{stat.value}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{stat.description}</p>
-                  </dd>
+            <span className="network-orbit network-orbit--one" />
+            <span className="network-orbit network-orbit--two" />
+            <span className="network-orbit network-orbit--three" />
+            {orbitBadges.map((badge) => {
+              const orbitTurn = badge.orbitDirection * 360;
+              const orbitStyle: OrbitStyle = {
+                "--orbit-angle": `${badge.orbitAngle}deg`,
+                "--orbit-counter-angle": `${-badge.orbitAngle}deg`,
+                "--orbit-duration": badge.orbitDuration,
+                "--orbit-radius": badge.orbitRadius,
+                "--orbit-turn": `${orbitTurn}deg`,
+                "--orbit-counter-turn": `${-orbitTurn}deg`,
+                "--orbit-scale-y": String(badge.orbitScaleY),
+                "--orbit-inverse-scale-y": String(1 / badge.orbitScaleY),
+                "--orbit-tilt": `${badge.orbitTilt}deg`,
+                "--orbit-counter-tilt": `${-badge.orbitTilt}deg`,
+              };
+
+              return (
+                <div key={badge.symbol} className="network-asset-orbit" style={orbitStyle}>
+                  <div className="network-asset-orbit__radial">
+                    <div className="network-asset-orbit__badge z-10 flex min-w-[140px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white/90 p-2 pr-3 shadow-lg backdrop-blur dark:border-white/15 dark:bg-[#071426]/90 xl:min-w-[150px]">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-blue-500/30 bg-slate-50 dark:bg-white/5">
+                        <ResilientImage
+                          src={badge.logo}
+                          alt=""
+                          className="h-7 w-7 object-contain"
+                          fallback={<span className="text-[9px] font-bold text-blue-600 dark:text-blue-300">{badge.symbol.slice(0, 2)}</span>}
+                        />
+                      </span>
+                      <span className="min-w-0">
+                        <strong className="block text-xs text-slate-950 dark:text-white">{badge.symbol}</strong>
+                        <span className="block truncate text-[10px] text-slate-500 dark:text-slate-400">{badge.name}</span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </dl>
+              );
+            })}
           </div>
-        )}
-      </div>
-    </section>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white/75 shadow-sm dark:border-white/10 dark:bg-white/[0.025]">
+        <div className="flex flex-col gap-1 border-b border-slate-200 px-5 py-3 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <h2 className="text-xs font-semibold text-slate-950 dark:text-white">Random community projects</h2>
+          <p className="text-[10px] text-slate-500 dark:text-slate-400">Randomized on every visit · No ranking</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-[repeat(3,minmax(0,1fr))_1.15fr] lg:grid-cols-[repeat(4,minmax(0,1fr))_1.15fr] 2xl:grid-cols-[repeat(5,minmax(0,1fr))_1.15fr]">
+          {randomProjects.map((project, index) => {
+            const logo = normalizeLogoPath(project.logo);
+            const darkLogo = normalizeLogoPath(project.darkLogo);
+            const responsiveVisibility = index === 4 ? "hidden 2xl:flex" : index === 3 ? "hidden lg:flex" : index === 2 ? "hidden sm:flex" : "flex";
+            return (
+              <a
+                key={project.name}
+                href={project.url}
+                target={project.url.startsWith("http") ? "_blank" : undefined}
+                rel={project.url.startsWith("http") ? "noopener noreferrer" : undefined}
+                className={`${responsiveVisibility} group min-h-[96px] items-center gap-4 border-b border-slate-200 px-5 transition hover:bg-blue-50/70 dark:border-white/10 dark:hover:bg-blue-500/[0.06] sm:border-b-0 sm:border-r`}
+                title={project.name}
+              >
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 p-1 dark:bg-white/[0.06]">
+                  {logo ? (
+                    darkLogo ? (
+                      <>
+                        <ResilientImage src={logo} fallbackSrc={terraClassicLogoUrl} alt="" className="h-full w-full rounded-full object-contain dark:hidden" />
+                        <ResilientImage src={darkLogo} fallbackSrc={terraClassicLogoUrl} alt="" className="hidden h-full w-full rounded-full object-contain dark:block" />
+                      </>
+                    ) : (
+                      <ResilientImage src={logo} fallbackSrc={terraClassicLogoUrl} alt="" className="h-full w-full rounded-full object-contain" />
+                    )
+                  ) : (
+                    <img src={terraClassicLogoUrl} alt="" className="h-full w-full rounded-full object-contain" />
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <strong className="line-clamp-2 text-sm leading-5 text-slate-950 dark:text-white">{project.name}</strong>
+                  <span className="mt-0.5 block truncate text-[11px] text-slate-500 dark:text-slate-400">{project.description ?? "Ecosystem project"}</span>
+                </span>
+              </a>
+            );
+          })}
+          <button
+            type="button"
+            onClick={onOpenMap}
+            className="flex min-h-[72px] items-center justify-center gap-2 px-5 text-sm font-semibold text-blue-600 transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/[0.06] sm:min-h-[96px]"
+          >
+            View project map
+            <ExternalLink size={15} />
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

@@ -19,8 +19,13 @@ import type { DocPage } from "../../types/doc-page";
 import type { DocSection } from "../../types/doc-section";
 import type { DocNavigationHandler } from "../../types/doc-navigation";
 import type { DocPageWithPath } from "../../types/doc-page-with-path";
+import { slugifyDocHeading } from "../../lib/docs-markdown";
 import DocNavigationFooter from "./doc-navigation-footer";
+import AssetsSupplyTable from "./assets-supply-table";
+import GovernanceLiveDashboard from "./governance-live-dashboard";
+import TreasuryLiveDashboard from "./treasury-live-dashboard";
 
+const ASSET_SUPPLY_MARKER = "<!-- ASSET_SUPPLY_TABLE -->";
 const CALLOUT_STYLE: Record<DocCalloutBlock["variant"], string> = {
   info: "border-sky-200/60 bg-sky-50/60 text-slate-700 dark:border-sky-900/60 dark:bg-sky-900/30 dark:text-slate-200",
   warning:
@@ -43,6 +48,7 @@ type DocContentProps = {
   readonly onNavigate: DocNavigationHandler;
   readonly previousPage?: DocPageWithPath;
   readonly nextPage?: DocPageWithPath;
+  readonly assetUsdPrices: Readonly<Record<string, number>>;
 };
 
 const CODE_COPY_FEEDBACK_DURATION_MS = 1600 as const;
@@ -439,17 +445,23 @@ const createMarkdownComponents = (
       )}
     />
   ),
-  h2: ({ node: _, className, ...props }) => (
+  h2: ({ node: _, className, children, ...props }) => (
     <h2
       {...props}
+      id={slugifyDocHeading(React.Children.toArray(children).join(" "))}
       className={mergeClassNames("mt-10 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-50", className)}
-    />
+    >
+      {children}
+    </h2>
   ),
-  h3: ({ node: _, className, ...props }) => (
+  h3: ({ node: _, className, children, ...props }) => (
     <h3
       {...props}
+      id={slugifyDocHeading(React.Children.toArray(children).join(" "))}
       className={mergeClassNames("mt-8 text-2xl font-semibold text-slate-900 dark:text-slate-100", className)}
-    />
+    >
+      {children}
+    </h3>
   ),
   h4: ({ node: _, className, ...props }) => (
     <h4
@@ -530,7 +542,7 @@ const createMarkdownComponents = (
     </blockquote>
   ),
   table: ({ node: _, className, children, ...props }) => (
-    <div className="mt-7 overflow-hidden rounded-2xl border border-slate-200/70 first:mt-0 dark:border-slate-800/60">
+    <div className="mt-7 overflow-x-auto rounded-2xl border border-slate-200/70 first:mt-0 dark:border-slate-800/60">
       <table {...props} className={mergeClassNames("w-full text-left text-sm text-slate-600 dark:text-slate-200", className)}>
         {children}
       </table>
@@ -707,7 +719,7 @@ function renderMarkdown(content: string, components: Components): JSX.Element {
   );
 }
 
-function DocContent({ page, section, currentPath, onNavigate, previousPage, nextPage }: DocContentProps): JSX.Element {
+function DocContent({ page, section, currentPath, onNavigate, previousPage, nextPage, assetUsdPrices }: DocContentProps): JSX.Element {
   const childPages = useMemo<readonly DocPage[]>(() => page.children ?? [], [page.children]);
   const hasStructuredSections = Boolean(page.sections && page.sections.length > 0);
   const markdownContent = useMemo<string>(() => (page.markdown ?? "").trim(), [page.markdown]);
@@ -716,11 +728,25 @@ function DocContent({ page, section, currentPath, onNavigate, previousPage, next
     [onNavigate, section.slug, currentPath],
   );
   const hasMarkdown = markdownContent.length > 0;
+  const assetMarkdownParts = useMemo<readonly string[] | undefined>(
+    () => page.livePanel === "assets" ? markdownContent.split(ASSET_SUPPLY_MARKER) : undefined,
+    [markdownContent, page.livePanel],
+  );
+  const hasAssetSupplyMarker = assetMarkdownParts?.length === 2;
 
   return (
     <div className="space-y-10">
+      {page.livePanel === "treasury" ? <TreasuryLiveDashboard assetUsdPrices={assetUsdPrices} /> : null}
+      {page.livePanel === "governance" ? <GovernanceLiveDashboard /> : null}
       {hasStructuredSections ? page.sections?.map((sectionBlock) => renderSection(sectionBlock)) : null}
-      {!hasStructuredSections && hasMarkdown ? renderMarkdown(markdownContent, markdownComponents) : null}
+      {!hasStructuredSections && hasMarkdown && hasAssetSupplyMarker && assetMarkdownParts ? (
+        <>
+          {renderMarkdown(assetMarkdownParts[0], markdownComponents)}
+          <AssetsSupplyTable assetUsdPrices={assetUsdPrices} />
+          {renderMarkdown(assetMarkdownParts[1], markdownComponents)}
+        </>
+      ) : null}
+      {!hasStructuredSections && hasMarkdown && !hasAssetSupplyMarker ? renderMarkdown(markdownContent, markdownComponents) : null}
       {!hasStructuredSections && !hasMarkdown ? (
         <div className="rounded-3xl border border-dashed border-slate-300/70 bg-white/60 p-10 text-sm text-slate-600 dark:border-slate-700/70 dark:bg-slate-950/40 dark:text-slate-300">
           <p>This chapter acts as a directory. Select a subpage from the menu to continue.</p>
