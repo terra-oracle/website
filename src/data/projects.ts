@@ -450,6 +450,14 @@ export const projects: ProjectLink[] = [
     wip: true,
     categories: ['entertainment']
   },
+  {
+    name: 'LUNC Community',
+    url: 'https://lunccommunity.com',
+    description: 'Independent analytics dashboard',
+    indicator: 'onchain',
+    logo: '/public/logos/tools/lunc-community.png',
+    categories: ['tools']
+  },
   { 
     name: 'LuncDaily',
     url: 'https://luncdaily.com',
