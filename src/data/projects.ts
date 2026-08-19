@@ -828,7 +828,7 @@ export const projects: ProjectLink[] = [
     description: 'Validator Info',
     indicator: 'support',
     logo: '/public/logos/validators/validatorinfo.svg',
-    categories: ['validators', 'tools', 'information']
+    categories: ['validators', 'tools']
   },
   { 
     name: 'Validators Discord group',
@@ -901,7 +901,7 @@ export const projects: ProjectLink[] = [
     description: 'Analytics',
     indicator: 'onchain',
     logo: '/public/logos/applications/truth-dashboard.png',
-    categories: ['tools', 'information']
+    categories: ['tools']
   },
   {
     name: 'State of the Chain (2022-2026)',
