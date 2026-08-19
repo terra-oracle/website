@@ -193,7 +193,12 @@ function MetricsShowcase({ tokens, stakingApr, onOpenStablecoins, onOpenTreasury
                     <span className={`text-xs font-semibold ${metric.isPositive ? "text-emerald-500" : "text-rose-500"}`}>{metric.change}</span>
                   </div>
                   <div className="mt-4">
-                    <p className="text-[10px] font-medium text-slate-600 dark:text-slate-400">Market cap</p>
+                    <p
+                      className="text-[10px] font-medium text-slate-600 dark:text-slate-400"
+                      title="Indicative market capitalization calculated from the current Vyntrex price and FCD circulating supply."
+                    >
+                      Market cap
+                    </p>
                     <p className="mt-0.5 text-xs font-medium text-slate-700 dark:text-slate-300">{metric.marketCap}</p>
                   </div>
                   <div

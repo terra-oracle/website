@@ -20,6 +20,10 @@ import { useTheme } from "./contexts/ThemeContext";
 import type { DocNavigationOptions } from "./types/doc-navigation";
 import type { DocSeoPage, DocSeoSection } from "./types/doc-seo";
 import { LAST_UPDATE } from "./generated/build-info";
+import {
+  fetchTerraClassicCirculatingSupply,
+  type TerraClassicCirculatingSupplyAsset,
+} from "./lib/terra-classic-supply";
 import { scheduleNonCriticalTask } from "./utils/schedule-non-critical-task";
 const ProjectMapPage = React.lazy(() => import("./components/project-map/project-map-page"));
 const DocsShell = React.lazy(() => import("./components/docs/docs-shell"));
@@ -61,20 +65,18 @@ type VyntrexPriceResponse = {
   readonly gain24h?: number;
   readonly gain7d?: number;
   readonly gain30d?: number;
-  readonly marketCap?: number;
-  readonly marketcap?: number;
-  readonly market_cap?: number;
-  readonly mcap?: number;
 };
 
 const STAKING_APR_ENDPOINT = "https://validator.info/api/terra-classic/blockchain/apr-info";
 const VYNTREX_API_BASE = "https://api.vyntrex.io/api/v1/prices";
-const VYNTREX_MARKET_CAP_API_BASE = "https://api.vyntrex.io/api/v1/marketcap";
 const DEFAULT_VYNTREX_API_KEY = "a7eb94aa-ff81-4a82-89e2-ca3665f70739";
 const CONFIGURED_VYNTREX_API_KEY = import.meta.env.VITE_VYNTREX_API_KEY?.trim();
 const VYNTREX_API_KEY = CONFIGURED_VYNTREX_API_KEY || DEFAULT_VYNTREX_API_KEY;
-const VYNTREX_MARKET_CAP_API_KEY = import.meta.env.VITE_VYNTREX_MARKET_CAP_API_KEY?.trim() || CONFIGURED_VYNTREX_API_KEY;
 const VYNTREX_REFERER = "https://terra-classic.io";
+const FCD_CIRCULATING_SUPPLY_ASSET_BY_SYMBOL = {
+  LUNC: "luna",
+  USTC: "ust",
+} as const satisfies Readonly<Record<string, TerraClassicCirculatingSupplyAsset>>;
 
 const HOME_TITLE = "Terra Classic (LUNC) | Ecosystem, Docs & Governance";
 const HOME_DESCRIPTION = "Explore Terra Classic (LUNC): native assets, live network data, validators, governance, developer guides, wallets, DeFi projects, and documentation.";
@@ -187,21 +189,6 @@ const formatUsdMarketCap = (value?: number): string => {
   })}${unit.suffix}`;
 };
 
-const parseVyntrexMarketCap = (payload: unknown): number | undefined => {
-  if (typeof payload === "number" && Number.isFinite(payload)) {
-    return payload;
-  }
-  if (!payload || typeof payload !== "object") {
-    return undefined;
-  }
-
-  const response = payload as Record<string, unknown>;
-  const candidate = [response.marketCap, response.marketcap, response.market_cap, response.mcap, response.value]
-    .find((value) => typeof value === "number" || (typeof value === "string" && value.trim().length > 0));
-  const marketCap = typeof candidate === "string" ? Number(candidate) : candidate;
-  return typeof marketCap === "number" && Number.isFinite(marketCap) ? marketCap : undefined;
-};
-
 const formatChangePercentage = (value: number): { readonly label: string; readonly isPositive: boolean } => {
   const percentage = value * 100;
   const isPositive = percentage >= 0;
@@ -226,26 +213,6 @@ const fetchVyntrexPrice = async (denom: string): Promise<VyntrexPriceResponse> =
   }
 
   return (await response.json()) as VyntrexPriceResponse;
-};
-
-const fetchVyntrexMarketCap = async (denom: string): Promise<number | undefined> => {
-  if (!VYNTREX_MARKET_CAP_API_KEY) {
-    return undefined;
-  }
-
-  const response = await fetch(`${VYNTREX_MARKET_CAP_API_BASE}/${denom}`, {
-    headers: {
-      Accept: "application/json",
-      "X-Api-Key": VYNTREX_MARKET_CAP_API_KEY,
-      Referer: VYNTREX_REFERER,
-    },
-  });
-
-  if (!response.ok) {
-    return undefined;
-  }
-
-  return parseVyntrexMarketCap(await response.json());
 };
 
 const getInitialState = (): AppState => ({
@@ -400,31 +367,42 @@ const App: React.FC<{
     let intervalId: number | undefined;
 
     const fetchTokenPrices = async () => {
-      const results = await Promise.allSettled(
-        stablecoinAssets.map(async (asset) => {
-          const data = await fetchVyntrexPrice(asset.denom);
-          const change = formatChangePercentage(data.gain24h ?? 0);
-          const marketCap = parseVyntrexMarketCap(data) ?? await fetchVyntrexMarketCap(asset.denom);
-          return [
-            asset.symbol,
-            {
-              price: formatUsdPrice(data.price ?? 0),
-              change: change.label,
-              isPositive: change.isPositive,
-              marketCap: formatUsdMarketCap(marketCap),
-            } satisfies TokenInfo,
-          ] as const;
+      const circulatingSupplyPromise = Promise.allSettled(
+        Object.entries(FCD_CIRCULATING_SUPPLY_ASSET_BY_SYMBOL).map(async ([symbol, asset]) => {
+          const result = await fetchTerraClassicCirculatingSupply(asset);
+          return [symbol, result.amount] as const;
         })
       );
+      const priceResultsPromise = Promise.allSettled(
+        stablecoinAssets.map(async (asset) => {
+          const data = await fetchVyntrexPrice(asset.denom);
+          return [asset, data] as const;
+        })
+      );
+      const [circulatingSupplyResults, results] = await Promise.all([
+        circulatingSupplyPromise,
+        priceResultsPromise,
+      ]);
 
       if (isCancelled) {
         return;
       }
 
+      const circulatingSupplies = new Map(
+        circulatingSupplyResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : [])
+      );
       const nextPrices = results.reduce<Record<string, TokenInfo>>((prices, result) => {
         if (result.status === "fulfilled") {
-          const [symbol, tokenInfo] = result.value;
-          prices[symbol] = tokenInfo;
+          const [asset, data] = result.value;
+          const change = formatChangePercentage(data.gain24h ?? 0);
+          const circulatingSupply = circulatingSupplies.get(asset.symbol);
+          const marketCap = circulatingSupply === undefined ? undefined : circulatingSupply * data.price;
+          prices[asset.symbol] = {
+            price: formatUsdPrice(data.price ?? 0),
+            change: change.label,
+            isPositive: change.isPositive,
+            marketCap: formatUsdMarketCap(marketCap),
+          } satisfies TokenInfo;
         }
         return prices;
       }, {});
@@ -441,6 +419,10 @@ const App: React.FC<{
       const failedRequests = results.filter((result) => result.status === "rejected").length;
       if (failedRequests > 0) {
         console.warn(`Unable to refresh ${failedRequests} Terra Classic asset price(s)`);
+      }
+      const failedSupplyRequests = circulatingSupplyResults.filter((result) => result.status === "rejected").length;
+      if (failedSupplyRequests > 0) {
+        console.warn(`Unable to refresh ${failedSupplyRequests} Terra Classic circulating supply value(s)`);
       }
     };
 
