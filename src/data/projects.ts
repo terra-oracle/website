@@ -170,14 +170,6 @@ export const projects: ProjectLink[] = [
     categories: ['applications']
   },
   { 
-    name: 'Cosmostation',
-    url: 'https://www.cosmostation.io',
-    description: 'Extension Wallet',
-    indicator: 'support',
-    logo: '/public/logos/wallets/cosmostation.svg',
-    categories: ['wallets']
-  },
-  { 
     name: 'Crypto.com',
     url: 'https://crypto.com/exchange/trade/LUNC_USD',
     description: 'Exchange',
@@ -546,14 +538,6 @@ export const projects: ProjectLink[] = [
     categories: ['applications', 'entertainment']
   },
   { 
-    name: 'MIOFF',
-    url: 'https://mioff-token.com',
-    description: 'Festival',
-    indicator: 'onchain',
-    logo: '/public/logos/entertainment/mioff.png',
-    categories: ['entertainment']
-  },
-  { 
     name: 'Node snapshots',
     url: 'https://snapshots.hexxagon.io/cosmos/terra-classic/columbus-5/',
     description: 'Sync Tool',
@@ -569,14 +553,6 @@ export const projects: ProjectLink[] = [
     logo: '/public/logos/infrastructure/nownodes.svg',
     darkLogo: '/public/logos/infrastructure/nownodes-dark.svg',
     categories: ['infrastructure', 'validators']
-  },
-  { 
-    name: 'Orbitar',
-    url: 'https://orbitar.app',
-    description: 'Mobile wallet',
-    indicator: 'onchain',
-    logo: '/public/logos/wallets/orbitar.png',
-    categories: ['wallets']
   },
   {
     name: 'Open API - BiNodes',
