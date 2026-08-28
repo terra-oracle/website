@@ -694,6 +694,14 @@ export const projects: ProjectLink[] = [
     logo: '/public/logos/entertainment/terracasino.png',
     categories: ['entertainment']
   },
+  {
+  name: 'Terra Oracle Classic',
+  url: 'https://terraoracle.io/home',
+  description: 'Community platform',
+  indicator: 'onchain',
+  logo: '/public/logos/applications/terra-oracle.png',
+  categories: ['applications', 'information']
+  },
   { 
     name: 'Terraclassic.network',
     url: 'https://terraclassic.network',
